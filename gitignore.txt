@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Node / Test-Hilfsmittel (nur lokal, nicht fürs Hosting nötig)
+node_modules/
+package-lock.json
+
+# Persönliche Backups der App-Daten nicht ins öffentliche Repo
+strongdad-backup-*.json
+*.backup.json
