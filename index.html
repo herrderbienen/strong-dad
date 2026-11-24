@@ -445,14 +445,14 @@ function seriesFor(key){
   }
   Object.keys(SEED).forEach(function(sk){ if(canonKey(sk)!==ck||!Array.isArray(SEED[sk]))return;
     SEED[sk].forEach(function(e){ build(e[0], e[1].map(function(a){return {w:a[0],r:a[1]};}), sk); }); });
-  sessions.forEach(function(s){ (s.entries||[]).forEach(function(en){ if(canonKey(en.exercise)!==ck)return; build(s.date, en.sets, en.exercise); }); });
+  sessions.forEach(function(s){ (s.entries||[]).forEach(function(en){ if(canonKey(en.exercise)!==ck)return; if(en.notrack)return; build(s.date, en.sets, en.exercise); }); });
   pts.sort(function(a,b){return a.date.localeCompare(b.date);});
   return pts;
 }
 function allExercises(){
   var set={};Object.keys(SEED).forEach(function(k){ if(Array.isArray(SEED[k])) set[canonKey(k)]=1; });
   sessions.forEach(s=>(s.entries||[]).forEach(e=>set[canonKey(e.exercise)]=1));
-  return Object.keys(set).filter(function(k){return !noTrack[k];}).sort();
+  return Object.keys(set).sort();
 }
 
 /* ============ TIMER (shared) ============ */
@@ -780,7 +780,7 @@ function ensureGrid(day,date){
       var wv=(pr&&pr.w)?String(pr.w):((lw&&lw.w)?String(lw.w):(soll>0?String(soll):""));
       rows.push({ w:wv, r:(pr&&pr.r)?String(pr.r):"", rir:(pr&&pr.rir!=null&&pr.rir!=="")?String(pr.rir):"" }); }
     grid[e.key]=rows;
-    gmeta[e.key]={note:(prev&&prev.note!=null)?prev.note:null, skip:(prev&&prev.skipped)||false};
+    gmeta[e.key]={note:(prev&&prev.note!=null)?prev.note:null, skip:(prev&&prev.skipped)||false, notrack:(prev&&prev.notrack)||false};
   });
 }
 function viewLog(){
@@ -805,6 +805,7 @@ function viewLog(){
     if(eff.deload&&!e.bw&&!e.sec&&!meta.skip)nm.appendChild(badge("Deload","b-skip"));
     if(soll>0&&!meta.skip)nm.appendChild(badge("Soll "+soll,"b-soll"));
     if(meta.skip)nm.appendChild(badge("übersprungen","b-skip"));
+    if(meta.notrack&&!meta.skip)nm.appendChild(badge("nicht getrackt","b-skip"));
     var du=meta.skip?null:dueIncrease(e);
     if(du){var sbt=el("button","badge b-up","↑ auf "+fmtKg(du.to)+" kg");sbt.title="Progression fällig – alle Sätze auf "+du.to+" kg setzen";sbt.onclick=function(){grid[e.key].forEach(function(rr){rr.w=String(du.to);});saveSilent();toast("Auf "+du.to+" kg gesteigert");render("log");};nm.appendChild(sbt);}
     mid.appendChild(nm);
@@ -842,10 +843,6 @@ function viewLog(){
       } }
       mid.appendChild(g);
       if(isDeload&&grid[e.key].length<(e.sets||grid[e.key].length))mid.appendChild(el("div","cue","Deload · nur "+grid[e.key].length+" von "+(e.sets||grid[e.key].length)+" Sätzen"));
-      var scw=el("div");scw.style.cssText="display:flex;gap:8px;margin-top:8px;";
-      var sMinus=el("button","btn sec sm","− Satz");sMinus.style.marginTop="0";sMinus.onclick=function(){ if(grid[e.key].length>1){grid[e.key].pop();saveSilent();render("log");} };
-      var sPlus=el("button","btn sec sm","+ Satz");sPlus.style.marginTop="0";sPlus.onclick=function(){grid[e.key].push({w:(soll>0?String(soll):""),r:"",rir:""});saveSilent();render("log");};
-      scw.appendChild(sMinus);scw.appendChild(sPlus);mid.appendChild(scw);
     }
     row.appendChild(mid);
     row.appendChild(progLinkBtn(e.key));
@@ -897,15 +894,19 @@ function dueIncrease(e){
 }
 function openExMenu(e,idx){
   var ov=el("div","sheetov"); var sh=el("div","sheet");
-  var meta=gmeta[e.key]||(gmeta[e.key]={note:null,skip:false});
+  var meta=gmeta[e.key]||(gmeta[e.key]={note:null,skip:false,notrack:false});
   function item(label,fn){var b=el("button","sheetbtn",label);b.onclick=function(){ov.remove();fn();};sh.appendChild(b);}
   item(meta.note==null?"\ud83d\udcdd Notiz hinzufügen":"\ud83d\udcdd Notiz bearbeiten",function(){meta.note=meta.note==null?"":meta.note;saveSilent();render("log");});
+  if(!meta.skip){
+    item("\u2795 Satz hinzuf\u00fcgen",function(){ var eff=effForEx(e,CYCLE_STEPS[cycleIdx]); var soll=eff.w; if(!grid[e.key])grid[e.key]=[]; grid[e.key].push({w:(soll>0?String(soll):""),r:"",rir:""}); saveSilent(); render("log"); });
+    if((grid[e.key]||[]).length>1) item("\u2796 Satz entfernen",function(){ if(grid[e.key]&&grid[e.key].length>1){grid[e.key].pop();saveSilent();render("log");} });
+  }
   if(!e.extra){
     item("\u2191 Nach oben",function(){moveEx(state.logDay,idx,-1);});
     item("\u2193 Nach unten",function(){moveEx(state.logDay,idx,1);});
   }
   item(meta.skip?"\u21a9 Nicht überspringen":"\u2715 Übung überspringen",function(){meta.skip=!meta.skip;saveSilent();render("log");});
-  var _ck=canonKey(e.key); item(noTrack[_ck]?"\ud83d\udcca Wieder tracken":"\ud83d\udcca Nicht tracken (Progression)",function(){ if(noTrack[_ck])delete noTrack[_ck]; else noTrack[_ck]=true; lset(K_NOTRACK,noTrack); render("log"); });
+  item(meta.notrack?"\ud83d\udcca Diese Einheit wieder tracken":"\ud83d\udcca Diese Einheit nicht tracken",function(){ meta.notrack=!meta.notrack; saveSilent(); render("log"); });
   if(e.extra){
     item("\ud83d\uddd1 Zusatzübung entfernen",function(){ var xk=xtraKeyFor(); var arr=logXtra[xk]||[]; for(var i=0;i<arr.length;i++){ if(arr[i].key===e.key){arr.splice(i,1);break;} } lset(K_XTRA,logXtra); gridKey=""; render("log"); });
   }
@@ -941,7 +942,7 @@ function collectSession(){
     var m=gmeta[e.key]||{note:null,skip:false};
     if(m.skip) return {exercise:e.key,name:e.n,sets:[],skipped:true,note:(m.note!=null?m.note:undefined)};
     var sets=(grid[e.key]||[]).map(function(r){var o={w:parseFloat(String(r.w).replace(",","."))||0,r:parseInt(r.r)||0};var rv=parseInt(r.rir);if(r.rir!==""&&r.rir!=null&&!isNaN(rv))o.rir=rv;return o;}).filter(s=>s.r>0);
-    var o={exercise:e.key,name:e.n,sets:sets}; if(m.note!=null)o.note=m.note; return o;
+    var o={exercise:e.key,name:e.n,sets:sets}; if(m.note!=null)o.note=m.note; if(m.notrack)o.notrack=true; return o;
   }).filter(en=>en.skipped||en.sets.length||(en.note!=null&&en.note!==""));
   return entries;
 }
